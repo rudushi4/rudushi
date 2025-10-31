@@ -1,16 +1,26 @@
 name: Fine-Tune Rudushi Model
 
 on:
+  # Auto-trigger on push to main branch (for continuous training)
+  push:
+    branches: [ main ]
+    paths:
+      - '**.py'
+      - '.github/workflows/**'
+  # Auto-trigger daily at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * *'
+  # Manual trigger (with defaults - no input needed)
   workflow_dispatch:
     inputs:
       steps:
         description: 'Number of training steps'
-        required: true
-        default: '100'
+        required: false
+        default: '1000'
         type: string
       model_size:
         description: 'Model size to fine-tune'
-        required: true
+        required: false
         default: '1.1B'
         type: choice
         options:

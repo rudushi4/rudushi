@@ -1,15 +1,22 @@
 name: Deploy to Hugging Face Spaces
 
 on:
+  # Auto-trigger after conversion & upload completes
   workflow_run:
     workflows: [Convert & Upload to Hugging Face]
     types:
       - completed
+  # Auto-trigger when GGUF model is created
+  push:
+    branches: [ main ]
+    paths:
+      - 'gguf_models/**'
+  # Manual trigger (auto-generates space name)
   workflow_dispatch:
     inputs:
       space_name:
         description: 'Name for the Space'
-        required: true
+        required: false
         default: 'rudushi'
         type: string
 

@@ -1,10 +1,17 @@
 name: Convert & Upload to Hugging Face
 
 on:
+  # Auto-trigger after fine-tune completes
   workflow_run:
     workflows: [Fine-Tune Rudushi Model]
     types:
       - completed
+  # Auto-trigger when model files change (sharded models detected)
+  push:
+    branches: [ main ]
+    paths:
+      - 'fine_tuned_rudushi/**'
+  # Manual trigger (with auto-detection)
   workflow_dispatch:
 
 env:
