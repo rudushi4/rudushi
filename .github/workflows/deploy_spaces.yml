@@ -1,0 +1,95 @@
+name: Deploy to Hugging Face Spaces
+
+on:
+  workflow_run:
+    workflows: [Convert & Upload to Hugging Face]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      space_name:
+        description: 'Name for the Space'
+        required: true
+        default: 'rudushi'
+        type: string
+
+jobs:
+  deploy-spaces:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install HF CLI
+        run: |
+          pip install --upgrade pip
+          pip install huggingface_hub
+
+      - name: Deploy to Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Get Space name
+          SPACE_NAME="${{ github.event.inputs.space_name || 'rudushi' }}"
+
+          echo "🚀 Deploying to Spaces: $SPACE_NAME"
+
+          # Create or update Space via API
+          python -c "
+import os
+from huggingface_hub import HfApi
+
+api = HfApi(token='${{ secrets.HF_TOKEN }}')
+
+# Space details
+space_id = '${{ github.repository_owner }}/rudushi-spaces-$SPACE_NAME'
+private = False
+
+# Create Space
+try:
+    api.create_repo(
+        repo_id=space_id,
+        repo_type='space',
+        space_sdk='gradio',
+        exist_ok=True
+    )
+    print(f'✅ Created/Updated Space: {space_id}')
+except Exception as e:
+    print(f'⚠️  Space creation note: {e}')
+
+# Upload files
+files_to_upload = [
+    'app.py',
+    'requirements.txt',
+    'README.md'
+]
+
+for file in files_to_upload:
+    if os.path.exists(file):
+        api.upload_file(
+            path_or_fileobj=open(file, 'rb'),
+            path_in_repo=file,
+            repo_id=space_id,
+            repo_type='space',
+            commit_message=f'Update {file}'
+        )
+        print(f'✅ Uploaded {file}')
+
+print(f'🌐 Space URL: https://huggingface.co/spaces/{space_id}')
+"
+
+      - name: Notify deployment
+        run: |
+          echo "🎉 Rudushi is now live!"
+          echo ""
+          echo "Spaces URL: https://huggingface.co/spaces/${{ github.repository_owner }}/rudushi-spaces-${{ github.event.inputs.space_name || 'rudushi' }}"
+          echo ""
+          echo "Your Rudushi assistant is available via web browser!"

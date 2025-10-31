@@ -1,0 +1,276 @@
+name: Fine-Tune Rudushi Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      steps:
+        description: 'Number of training steps'
+        required: true
+        default: '100'
+        type: string
+      model_size:
+        description: 'Model size to fine-tune'
+        required: true
+        default: '1.1B'
+        type: choice
+        options:
+          - '1.1B'
+          - '3B'
+
+env:
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  HUGGING_FACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+
+jobs:
+  finetune:
+    runs-on: linux-cuda11.8-cudnn8-runtime
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Cache Hugging Face models
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/huggingface/
+            ~/.cache/torch/
+          key: hf-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            hf-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+          pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+          pip install --no-deps "xformers<0.0.27" "trl<0.9.0" peft accelerate bitsandbytes datasets transformers huggingface_hub safetensors
+
+      - name: Fine-tune model
+        env:
+          HF_HOME: /tmp/huggingface
+          TRANSFORMERS_CACHE: /tmp/transformers
+          CUDA_VISIBLE_DEVICES: 0
+        run: |
+          python -c "
+import torch
+from datasets import load_dataset
+from unsloth import FastLanguageModel
+from trl import SFTTrainer
+from transformers import TrainingArguments
+from unsloth import is_bfloat16_supported
+import os
+
+# Configuration
+MODEL_NAME = 'unsloth/tinyllama-bnb-4bit'
+MAX_SEQ_LENGTH = 2048
+DTYPE = None
+LOAD_IN_4BIT = True
+MAX_STEPS = ${{ github.event.inputs.steps }}
+
+print('🚀 Starting Rudushi fine-tuning...')
+print(f'   Steps: {MAX_STEPS}')
+print(f'   Model: {MODEL_NAME}')
+
+# Load model
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name=MODEL_NAME,
+    max_seq_length=MAX_SEQ_LENGTH,
+    dtype=DTYPE,
+    load_in_4bit=LOAD_IN_4BIT,
+)
+print('✅ Model loaded')
+
+# Add LoRA
+model = FastLanguageModel.get_peft_model(
+    model,
+    r=16,
+    target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj'],
+    lora_alpha=16,
+    lora_dropout=0,
+    bias='none',
+    use_gradient_checkpointing=True,
+    random_state=3407,
+)
+print('✅ LoRA added')
+
+# Load dataset
+ALPACA_PROMPT = '''Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+{}
+
+### Input:
+{}
+
+### Response:
+{}'''
+
+EOS_TOKEN = tokenizer.eos_token
+
+def formatting_prompts_func(examples):
+    instructions = examples['instruction']
+    inputs = examples['input']
+    outputs = examples['output']
+    texts = []
+    for instruction, input, output in zip(instructions, inputs, outputs):
+        text = ALPACA_PROMPT.format(instruction, input, output) + EOS_TOKEN
+        texts.append(text)
+    return {'text': texts}
+
+print('📚 Loading dataset...')
+dataset = load_dataset('tatsu-lab/alpaca', split='train')
+dataset = dataset.map(formatting_prompts_func, batched=True)
+
+# Split
+dataset_dict = dataset.train_test_split(test_size=0.05)
+train_dataset = dataset_dict['train']
+eval_dataset = dataset_dict['test']
+
+print(f'✅ Dataset prepared: {len(train_dataset)} train, {len(eval_dataset)} eval')
+
+# Setup trainer
+trainer = SFTTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
+    dataset_text_field='text',
+    max_seq_length=MAX_SEQ_LENGTH,
+    packing=True,
+    args=TrainingArguments(
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        warmup_steps=5,
+        max_steps=int(MAX_STEPS),
+        learning_rate=2e-4,
+        fp16=not is_bfloat16_supported(),
+        bf16=is_bfloat16_supported(),
+        optim='adamw_8bit',
+        weight_decay=0.01,
+        lr_scheduler_type='linear',
+        seed=3407,
+        output_dir='outputs',
+        evaluation_strategy='steps',
+        eval_steps=10,
+        save_steps=50,
+        logging_steps=10,
+        report_to='none'
+    ),
+)
+
+print('✅ Trainer ready')
+
+# Train
+print(f'🚀 Starting training ({MAX_STEPS} steps)...')
+trainer.train()
+print('✅ Training complete!')
+
+# Save model
+OUTPUT_DIR = 'fine_tuned_rudushi'
+print(f'💾 Saving model to {OUTPUT_DIR}...')
+model.save_pretrained(OUTPUT_DIR)
+tokenizer.save_pretrained(OUTPUT_DIR)
+print('✅ Model saved!')
+
+print('🎉 Fine-tuning complete!')
+"
+
+      - name: Test model
+        run: |
+          python -c "
+from unsloth import FastLanguageModel
+import torch
+
+model, tokenizer = FastLanguageModel.from_pretrained('fine_tuned_rudushi', max_seq_length=2048)
+FastLanguageModel.for_inference(model)
+
+test_prompt = '''Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+Write a Python function to reverse a string.
+
+### Response:
+'''
+
+inputs = tokenizer([test_prompt], return_tensors='pt').to('cuda')
+outputs = model.generate(**inputs, max_new_tokens=128, use_cache=True, temperature=0.7)
+response = tokenizer.batch_decode(outputs)[0]
+print('🧪 Test output:')
+print(response)
+print('✅ Model working!')
+"
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: rudushi-model-${{ github.run_number }}
+          path: |
+            fine_tuned_rudushi/
+          retention-days: 30
+
+      - name: Upload to Hugging Face
+        if: github.event.inputs.upload_hf == 'true'
+        run: |
+          pip install huggingface_hub
+          python -c "
+from huggingface_hub import HfApi
+import os
+
+api = HfApi(token='${{ secrets.HF_TOKEN }}')
+api.upload_folder(
+    folder_path='fine_tuned_rudushi',
+    repo_id='${{ secrets.HF_REPO }}',
+    repo_type='model',
+    commit_message='Fine-tune Rudushi (${{ github.event.inputs.steps }} steps)',
+)
+print('✅ Uploaded to Hugging Face!')
+"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: always()
+        with:
+          tag_name: rudushi-v${{ github.run_number }}
+          name: Rudushi Model v${{ github.run_number }}
+          body: |
+            ## Rudushi Fine-Tuned Model
+
+            **Training Details:**
+            - Steps: ${{ github.event.inputs.steps }}
+            - Model: TinyLlama-1.1B
+            - Dataset: Alpaca (52K)
+            - Method: LoRA (Rank 16)
+            - Hardware: NVIDIA GPU (GitHub Actions)
+
+            **Files:**
+            - Fine-tuned model saved
+            - Ready for GGUF conversion
+
+            **Usage:**
+            ```python
+            from transformers import AutoTokenizer, AutoModelForCausalLM
+
+            model = AutoModelForCausalLM.from_pretrained('./fine_tuned_rudushi')
+            tokenizer = AutoTokenizer.from_pretrained('./fine_tuned_rudushi')
+            ```
+          files: |
+            fine_tuned_rudushi/
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify completion
+        run: |
+          echo "🎉 Rudushi fine-tuning complete!"
+          echo "   Model: fine_tuned_rudushi/"
+          echo "   Artifacts uploaded: rudushi-model-${{ github.run_number }}"
+          echo "   Trigger next workflow to convert & upload"

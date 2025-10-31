@@ -1,0 +1,104 @@
+╔════════════════════════════════════════════════════════════════════════╗
+║                  🎯 RUDUSHI QUICK REFERENCE                            ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+📱 YOUR DEVICE: Android 13, 7.5GB RAM, ARM64
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 FASTEST WAY TO START (3 commands):
+
+  1. Download model:
+     ./05_download_model.sh
+
+  2. Test it:
+     /data/data/com.termux/files/home/llama.cpp/build/bin/llama-cli \
+       -m /data/data/com.termux/files/home/rudushi_model/TinyLlama-1.1B-Chat-v1.0.Q4_K_M.gguf \
+       -p "Hello" -n 50
+
+  3. Chat:
+     /data/data/com.termux/files/home/llama.cpp/build/bin/llama-cli \
+       -m /data/data/com.termux/files/home/rudushi_model/TinyLlama-1.1B-Chat-v1.0.Q4_K_M.gguf \
+       --interactive --mlock
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📂 KEY LOCATIONS:
+
+  Scripts:      /data/data/com.termux/files/home/rudushi/*.py /data/data/com.termux/files/home/rudushi/*.sh
+  Models:       /data/data/com.termux/files/home/rudushi_model/
+  llama.cpp:    /data/data/com.termux/files/home/llama.cpp/
+  Binary:       /data/data/com.termux/files/home/llama.cpp/build/bin/llama-cli
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💾 DOWNLOAD MODELS:
+
+  TinyLlama-1.1B (550MB):
+    https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF
+
+  Qwen2-1.5B (940MB):
+    https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF
+
+  Phi-3-Mini-4K (2.3GB):
+    https://huggingface.co/mradermacher/Phi-3-mini-4k-instruct-gguf
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚙️ COMMON COMMANDS:
+
+  Quick test:
+  ./llama-cli -m MODEL.gguf -p "Question?" -n 100
+
+  Interactive chat:
+  ./llama-cli -m MODEL.gguf --interactive --mlock
+
+  Better quality:
+  ./llama-cli -m MODEL.gguf -p "Prompt" -n 512 --temp 0.5
+
+  Performance mode:
+  ./llama-cli -m MODEL.gguf -p "Prompt" -t 4 -b 512 --mlock
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 DOCUMENTATION:
+
+  SETUP_STATUS.md      → Setup guide for YOUR device
+  README.md            → Full project documentation
+  PROJECT_SUMMARY.md   → Technical details
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚡ YOUR DEVICE CAN RUN:
+
+  ✅ TinyLlama-1.1B (550MB) - Multiple copies!
+  ✅ Qwen2-1.5B (940MB) - Excellent quality
+  ✅ Phi-3-Mini-4K (2.3GB) - Best capability
+
+  With 7.5GB RAM, you have room to spare! 🎉
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🐛 TROUBLESHOOTING:
+
+  Out of memory?
+    → Close other apps, use -c 1024
+
+  Slow performance?
+    → Use --mlock, -t 4, -b 512
+
+  Can't download model?
+    → Get HF token: https://huggingface.co/settings/tokens
+    → Or download via browser and transfer
+
+  Need help?
+    → All scripts have --help option
+    → Read documentation files
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 PRO TIP:
+
+  Start with TinyLlama-1.1B (fastest), then try larger models
+  as you get comfortable!
+
